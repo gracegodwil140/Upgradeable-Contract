@@ -11,6 +11,8 @@ A complete **proxy pattern implementation** for upgradeable smart contracts on t
 - 📊 **Implementation History** - Complete audit trail of all upgrades
 - ⚡ **Emergency Controls** - Pause functionality for security incidents
 - 🎯 **Batch Operations** - Efficient multiple implementation upgrades
+- ⏱️ **Time-locked Upgrades** - Enforced delay period prevents instant malicious upgrades
+- 🔔 **Proposal System** - Transparent upgrade announcements with cancellation capability
 
 ## 📁 Contract Architecture
 
@@ -56,10 +58,32 @@ clarinet check
 (contract-call? .upgradeable-contract initialize 'ST1ADMIN... 'ST1IMPL-V1...)
 ```
 
-#### 🔄 Upgrade Implementation
+#### ⏱️ Time-locked Upgrade (Recommended)
 ```clarity
-;; Upgrade to new implementation (admin only)
+;; Step 1: Propose upgrade (starts 144-block delay)
+(contract-call? .upgradeable-contract propose-upgrade 'ST1IMPL-V2...)
+
+;; Step 2: Wait for timelock period (~1 day)
+;; Anyone can check pending upgrade status
+(contract-call? .upgradeable-contract get-pending-upgrade)
+
+;; Step 3: Execute after timelock expires (permissionless)
+(contract-call? .upgradeable-contract execute-upgrade)
+
+;; Optional: Cancel pending upgrade (admin only)
+(contract-call? .upgradeable-contract cancel-upgrade)
+```
+
+### 🔄 Instant Upgrade (Timelock Disabled)
+```clarity
+;; Disable timelock for testing/emergency (admin only)
+(contract-call? .upgradeable-contract toggle-timelock false)
+
+;; Instant upgrade to new implementation
 (contract-call? .upgradeable-contract upgrade-to 'ST1IMPL-V2...)
+
+;; Re-enable timelock for production
+(contract-call? .upgradeable-contract toggle-timelock true)
 ```
 
 #### 📞 Execute Functions
@@ -106,11 +130,19 @@ clarinet check
 - **Admin-only upgrades** - Only authorized users can upgrade
 - **Multi-signature support** - Enhanced security for critical operations
 - **Emergency pause** - Immediate shutdown capability
+- **Time-locked upgrades** - Mandatory waiting period prevents rug-pulls
+
+### ⏱️ Timelock Governance
+- **144-block delay** - ~1 day notice period for all upgrades
+- **Transparent proposals** - On-chain visibility of pending upgrades
+- **Cancellation rights** - Admin can cancel suspicious upgrades
+- **Permissionless execution** - Anyone can finalize after timelock expires
 
 ### 📝 Audit Trail
 - **Version history** - Complete upgrade timeline
 - **Implementation tracking** - All deployed contracts recorded
 - **Rollback capability** - Revert to stable versions
+- **Upgrade proposals** - Public record of proposed changes
 
 ## 🧪 Testing
 

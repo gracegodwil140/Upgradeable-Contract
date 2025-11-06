@@ -8,6 +8,7 @@
 (define-constant ERR_TIMELOCK_NOT_EXPIRED (err u1007))
 (define-constant ERR_PENDING_UPGRADE_EXISTS (err u1008))
 (define-constant ERR_NO_PENDING_UPGRADE (err u1009))
+(define-constant ERR_NO_PENDING_ADMIN (err u1010))
 
 (define-constant UPGRADE_DELAY u144)
 
@@ -17,6 +18,7 @@
 (define-data-var version uint u0)
 (define-data-var timelock-enabled bool true)
 (define-data-var pending-upgrade (optional {impl: principal, eta: uint}) none)
+(define-data-var pending-admin (optional principal) none)
 
 (define-map implementation-history uint principal)
 (define-map authorized-upgraders principal bool)
@@ -41,6 +43,9 @@
 
 (define-read-only (get-pending-upgrade)
   (var-get pending-upgrade))
+
+(define-read-only (get-pending-admin)
+  (var-get pending-admin))
 
 (define-read-only (is-timelock-enabled)
   (var-get timelock-enabled))
@@ -133,6 +138,32 @@
     (asserts! (var-get initialized) ERR_NOT_INITIALIZED)
     (asserts! (is-eq tx-sender (var-get admin)) ERR_UNAUTHORIZED)
     (map-delete authorized-upgraders user)
+    (ok true)))
+
+(define-public (propose-admin (new-admin principal))
+  (begin
+    (asserts! (var-get initialized) ERR_NOT_INITIALIZED)
+    (asserts! (is-eq tx-sender (var-get admin)) ERR_UNAUTHORIZED)
+    (asserts! (is-none (var-get pending-admin)) ERR_UNAUTHORIZED)
+    (var-set pending-admin (some new-admin))
+    (ok true)))
+
+(define-public (accept-admin)
+  (match (var-get pending-admin)
+    proposed
+      (begin
+        (asserts! (is-eq tx-sender proposed) ERR_UNAUTHORIZED)
+        (var-set admin proposed)
+        (var-set pending-admin none)
+        (ok true))
+    ERR_NO_PENDING_ADMIN))
+
+(define-public (cancel-admin-transfer)
+  (begin
+    (asserts! (var-get initialized) ERR_NOT_INITIALIZED)
+    (asserts! (is-eq tx-sender (var-get admin)) ERR_UNAUTHORIZED)
+    (asserts! (is-some (var-get pending-admin)) ERR_NO_PENDING_ADMIN)
+    (var-set pending-admin none)
     (ok true)))
 
 (define-public (rollback-to-version (target-version uint))

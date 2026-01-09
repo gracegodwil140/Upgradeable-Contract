@@ -22,6 +22,7 @@
 
 (define-map implementation-history uint principal)
 (define-map authorized-upgraders principal bool)
+(define-map feature-flags (string-ascii 32) bool)
 
 (define-read-only (get-admin)
   (var-get admin))
@@ -52,6 +53,9 @@
 
 (define-read-only (get-upgrade-delay)
   UPGRADE_DELAY)
+
+(define-read-only (get-feature-flag (name (string-ascii 32)))
+  (default-to false (map-get? feature-flags name)))
 
 (define-public (initialize (new-admin principal) (initial-implementation principal))
   (begin
@@ -124,6 +128,13 @@
     (asserts! (var-get initialized) ERR_NOT_INITIALIZED)
     (asserts! (is-eq tx-sender (var-get admin)) ERR_UNAUTHORIZED)
     (var-set timelock-enabled enabled)
+    (ok enabled)))
+
+(define-public (set-feature-flag (name (string-ascii 32)) (enabled bool))
+  (begin
+    (asserts! (var-get initialized) ERR_NOT_INITIALIZED)
+    (asserts! (is-eq tx-sender (var-get admin)) ERR_UNAUTHORIZED)
+    (map-set feature-flags name enabled)
     (ok enabled)))
 
 (define-public (add-authorized-upgrader (user principal))

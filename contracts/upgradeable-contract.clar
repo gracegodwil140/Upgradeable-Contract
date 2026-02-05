@@ -9,6 +9,7 @@
 (define-constant ERR_PENDING_UPGRADE_EXISTS (err u1008))
 (define-constant ERR_NO_PENDING_UPGRADE (err u1009))
 (define-constant ERR_NO_PENDING_ADMIN (err u1010))
+(define-constant ERR_CONTRACT_LOCKED (err u1011))
 
 (define-constant UPGRADE_DELAY u144)
 
@@ -19,6 +20,7 @@
 (define-data-var timelock-enabled bool true)
 (define-data-var pending-upgrade (optional {impl: principal, eta: uint}) none)
 (define-data-var pending-admin (optional principal) none)
+(define-data-var upgrade-locked bool false)
 
 (define-map implementation-history uint principal)
 (define-map authorized-upgraders principal bool)
@@ -48,6 +50,9 @@
 (define-read-only (get-pending-admin)
   (var-get pending-admin))
 
+(define-read-only (is-upgrade-locked)
+  (var-get upgrade-locked))
+
 (define-read-only (is-timelock-enabled)
   (var-get timelock-enabled))
 
@@ -73,6 +78,7 @@
         (new-version (+ current-version u1)))
     (begin
       (asserts! (var-get initialized) ERR_NOT_INITIALIZED)
+      (asserts! (not (var-get upgrade-locked)) ERR_CONTRACT_LOCKED)
       (asserts! (not (var-get timelock-enabled)) ERR_UNAUTHORIZED)
       (asserts! (or (is-eq tx-sender (var-get admin)) (is-authorized-upgrader tx-sender)) ERR_UNAUTHORIZED)
       (asserts! (not (is-eq new-implementation (var-get implementation))) ERR_INVALID_IMPLEMENTATION)
@@ -92,6 +98,7 @@
   (let ((eta (+ stacks-block-height UPGRADE_DELAY)))
     (begin
       (asserts! (var-get initialized) ERR_NOT_INITIALIZED)
+      (asserts! (not (var-get upgrade-locked)) ERR_CONTRACT_LOCKED)
       (asserts! (or (is-eq tx-sender (var-get admin)) (is-authorized-upgrader tx-sender)) ERR_UNAUTHORIZED)
       (asserts! (var-get timelock-enabled) ERR_UNAUTHORIZED)
       (asserts! (is-none (var-get pending-upgrade)) ERR_PENDING_UPGRADE_EXISTS)
@@ -177,9 +184,17 @@
     (var-set pending-admin none)
     (ok true)))
 
+(define-public (lock-upgradeability)
+  (begin
+    (asserts! (var-get initialized) ERR_NOT_INITIALIZED)
+    (asserts! (is-eq tx-sender (var-get admin)) ERR_UNAUTHORIZED)
+    (var-set upgrade-locked true)
+    (ok true)))
+
 (define-public (rollback-to-version (target-version uint))
   (begin
     (asserts! (var-get initialized) ERR_NOT_INITIALIZED)
+    (asserts! (not (var-get upgrade-locked)) ERR_CONTRACT_LOCKED)
     (asserts! (not (var-get timelock-enabled)) ERR_UNAUTHORIZED)
     (asserts! (is-eq tx-sender (var-get admin)) ERR_UNAUTHORIZED)
     (asserts! (< u0 target-version) ERR_INVALID_VERSION)
@@ -228,6 +243,7 @@
 (define-public (batch-upgrade (implementations (list 5 principal)))
   (begin
     (asserts! (var-get initialized) ERR_NOT_INITIALIZED)
+    (asserts! (not (var-get upgrade-locked)) ERR_CONTRACT_LOCKED)
     (asserts! (not (var-get timelock-enabled)) ERR_UNAUTHORIZED)
     (asserts! (is-eq tx-sender (var-get admin)) ERR_UNAUTHORIZED)
     (fold upgrade-implementation implementations (ok u0))))
@@ -270,6 +286,7 @@
         (new-version (+ current-version u1)))
     (begin
       (asserts! (var-get initialized) ERR_NOT_INITIALIZED)
+      (asserts! (not (var-get upgrade-locked)) ERR_CONTRACT_LOCKED)
       (asserts! (not (var-get timelock-enabled)) ERR_UNAUTHORIZED)
       (asserts! (>= (len signatures) u2) ERR_UNAUTHORIZED)
       (asserts! (validate-signatures signatures new-implementation) ERR_UNAUTHORIZED)

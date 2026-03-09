@@ -10,6 +10,7 @@
 (define-constant ERR_NO_PENDING_UPGRADE (err u1009))
 (define-constant ERR_NO_PENDING_ADMIN (err u1010))
 (define-constant ERR_CONTRACT_LOCKED (err u1011))
+(define-constant ERR_NOT_WHITELISTED (err u1012))
 
 (define-constant UPGRADE_DELAY u144)
 
@@ -24,6 +25,7 @@
 
 (define-map implementation-history uint principal)
 (define-map authorized-upgraders principal bool)
+(define-map whitelisted-implementations principal bool)
 (define-map feature-flags (string-ascii 32) bool)
 
 (define-read-only (get-admin)
@@ -43,6 +45,9 @@
 
 (define-read-only (is-authorized-upgrader (user principal))
   (default-to false (map-get? authorized-upgraders user)))
+
+(define-read-only (is-whitelisted-implementation (impl principal))
+  (default-to false (map-get? whitelisted-implementations impl)))
 
 (define-read-only (get-pending-upgrade)
   (var-get pending-upgrade))
@@ -66,6 +71,7 @@
   (begin
     (asserts! (not (var-get initialized)) ERR_ALREADY_INITIALIZED)
     (asserts! (is-eq tx-sender (var-get admin)) ERR_UNAUTHORIZED)
+    (map-set whitelisted-implementations initial-implementation true)
     (var-set admin new-admin)
     (var-set implementation initial-implementation)
     (var-set initialized true)
@@ -79,6 +85,7 @@
     (begin
       (asserts! (var-get initialized) ERR_NOT_INITIALIZED)
       (asserts! (not (var-get upgrade-locked)) ERR_CONTRACT_LOCKED)
+      (asserts! (is-whitelisted-implementation new-implementation) ERR_NOT_WHITELISTED)
       (asserts! (not (var-get timelock-enabled)) ERR_UNAUTHORIZED)
       (asserts! (or (is-eq tx-sender (var-get admin)) (is-authorized-upgrader tx-sender)) ERR_UNAUTHORIZED)
       (asserts! (not (is-eq new-implementation (var-get implementation))) ERR_INVALID_IMPLEMENTATION)
@@ -157,6 +164,13 @@
     (asserts! (is-eq tx-sender (var-get admin)) ERR_UNAUTHORIZED)
     (map-delete authorized-upgraders user)
     (ok true)))
+
+(define-public (set-whitelisting-status (impl principal) (status bool))
+  (begin
+    (asserts! (var-get initialized) ERR_NOT_INITIALIZED)
+    (asserts! (is-eq tx-sender (var-get admin)) ERR_UNAUTHORIZED)
+    (map-set whitelisted-implementations impl status)
+    (ok status)))
 
 (define-public (propose-admin (new-admin principal))
   (begin
@@ -244,6 +258,7 @@
   (begin
     (asserts! (var-get initialized) ERR_NOT_INITIALIZED)
     (asserts! (not (var-get upgrade-locked)) ERR_CONTRACT_LOCKED)
+    (asserts! (is-whitelisted-list implementations) ERR_NOT_WHITELISTED)
     (asserts! (not (var-get timelock-enabled)) ERR_UNAUTHORIZED)
     (asserts! (is-eq tx-sender (var-get admin)) ERR_UNAUTHORIZED)
     (fold upgrade-implementation implementations (ok u0))))
@@ -287,6 +302,7 @@
     (begin
       (asserts! (var-get initialized) ERR_NOT_INITIALIZED)
       (asserts! (not (var-get upgrade-locked)) ERR_CONTRACT_LOCKED)
+      (asserts! (is-whitelisted-implementation new-implementation) ERR_NOT_WHITELISTED)
       (asserts! (not (var-get timelock-enabled)) ERR_UNAUTHORIZED)
       (asserts! (>= (len signatures) u2) ERR_UNAUTHORIZED)
       (asserts! (validate-signatures signatures new-implementation) ERR_UNAUTHORIZED)
@@ -301,6 +317,13 @@
 (define-private (validate-single-signature (signature (buff 65)))
   true)
 
+(define-private (is-whitelisted-list (implementations (list 5 principal)))
+  (fold check-whitelisted implementations true))
+
+(define-private (check-whitelisted (impl principal) (prev-status bool))
+  (and prev-status (is-whitelisted-implementation impl)))
+
 (begin
   (var-set admin tx-sender)
+  (map-set whitelisted-implementations 'ST000000000000000000002AMW42H true)
 )
